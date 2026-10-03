@@ -1,4 +1,4 @@
-# Store POS
+# ZeedPOS
 
 Modern desktop Point of Sale for a single register or a LAN of networked tills. Version **2.0** rebuilds the original Electron app on a secure, maintainable stack.
 
