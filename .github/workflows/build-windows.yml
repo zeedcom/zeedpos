@@ -9,7 +9,7 @@ on:
 
 permissions:
   contents: write
-  
+
 jobs:
   build:
     runs-on: windows-latest
@@ -41,4 +41,4 @@ jobs:
         with:
           name: windows-installer
           path: |
-            dist/*.exe
+            release/*.exe
