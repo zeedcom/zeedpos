@@ -51,7 +51,7 @@ export default function LoginPage() {
   return (
     <div className="login-wrap">
       <form className="panel login-card" onSubmit={onSubmit}>
-        <h1>Store POS</h1>
+        <h1>ZeedPOS</h1>
         <p>Sign in to open the till</p>
 
         {(serverError || error) && <div className="error">{serverError || error}</div>}

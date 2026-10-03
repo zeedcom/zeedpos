@@ -53,7 +53,7 @@ export default function AppShell({
               <div className="nav-logo nav-logo-fallback" aria-hidden />
             )}
             <div className="nav-brand-text">
-              <strong>Store POS</strong>
+              <strong>ZeedPOS</strong>
               <span>{apiInfo?.mode?.replace(' Point of Sale', '') || 'Standalone'}</span>
             </div>
           </div>

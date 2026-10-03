@@ -1,5 +1,5 @@
 {
-  "name": "store-pos",
+  "name": "zeedpos",
   "version": "2.0.0",
   "description": "Modern desktop Point of Sale with LAN multi-terminal support",
   "author": "Hosting Domain",
@@ -15,9 +15,9 @@
     "dist": "vite build && electron-builder --win"
   },
   "build": {
-    "appId": "com.storepos.app",
-    "productName": "Store POS",
-    "copyright": "Copyright © Hosting Domain",
+    "appId": "com.zeedpos.app",
+    "productName": "ZeedPOS",
+    "copyright": "Copyright © zeedcom",
     "directories": {
       "output": "release",
       "buildResources": "build"

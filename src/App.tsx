@@ -9,7 +9,7 @@ export default function App() {
     return (
       <div className="login-wrap">
         <div className="panel login-card">
-          <h1>Store POS</h1>
+          <h1>ZeedPOS</h1>
           <p>Starting…</p>
         </div>
       </div>
