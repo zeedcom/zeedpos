@@ -90,8 +90,10 @@ export default function TillView({
       if (!q) return catOk;
       return (
         catOk &&
-        (p.name.toLowerCase().includes(q) || String(p.id).includes(q))
-      );
+        (p.name.toLowerCase().includes(q) ||
+          String(p.id).includes(q) ||
+    (p.barcode || '').includes(q))
+);
     });
   }, [products, query, categoryFilter]);
 
@@ -168,8 +170,9 @@ export default function TillView({
       }
       // fallback local match by id or exact name
       const local =
-        products.find((p) => String(p.id) === code) ||
-        products.find((p) => p.name.toLowerCase() === code.toLowerCase());
+            products.find((p) => p.barcode && p.barcode === code) ||
+            products.find((p) => String(p.id) === code) ||
+            products.find((p) => p.name.toLowerCase() === code.toLowerCase());
       if (local) {
         addToCart(local);
         setQuery('');

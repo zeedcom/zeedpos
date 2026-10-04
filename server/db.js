@@ -146,7 +146,8 @@ export async function initDatabase(filePath) {
       category TEXT NOT NULL DEFAULT '',
       quantity INTEGER NOT NULL DEFAULT 0,
       stock INTEGER NOT NULL DEFAULT 1,
-      img TEXT NOT NULL DEFAULT ''
+      img TEXT NOT NULL DEFAULT '',
+      barcode TEXT 
     );
 
     CREATE TABLE IF NOT EXISTS customers (
@@ -204,12 +205,35 @@ export async function initDatabase(filePath) {
       items_json TEXT NOT NULL DEFAULT '[]',
       date TEXT NOT NULL
     );
-
+    CREATE TABLE IF NOT EXISTS stock_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ref_number TEXT NOT NULL DEFAULT '',
+      supplier TEXT NOT NULL DEFAULT '',
+      note TEXT NOT NULL DEFAULT '',
+      user_id INTEGER NOT NULL DEFAULT 0,
+      user_name TEXT NOT NULL DEFAULT '',
+      total_cost REAL NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS stock_entry_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      entry_id INTEGER NOT NULL,
+      product_id INTEGER NOT NULL,
+      product_name TEXT NOT NULL DEFAULT '',
+      barcode TEXT NOT NULL DEFAULT '',
+      quantity INTEGER NOT NULL,
+      unit_cost REAL NOT NULL DEFAULT 0
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_stock_items_entry ON stock_entry_items(entry_id);
+    CREATE INDEX IF NOT EXISTS idx_stock_entries_date ON stock_entries(created_at);
     CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
     CREATE INDEX IF NOT EXISTS idx_transactions_status ON transactions(status);
     CREATE INDEX IF NOT EXISTS idx_transactions_user ON transactions(user_id);
     CREATE INDEX IF NOT EXISTS idx_transactions_till ON transactions(till);
     CREATE INDEX IF NOT EXISTS idx_products_name ON products(name);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_products_barcode
+  ON products(barcode) WHERE barcode IS NOT NULL AND barcode <> '';
   `);
 
   migrateSchema();
@@ -279,6 +303,7 @@ export function mapProduct(row) {
     quantity: row.quantity,
     stock: row.stock,
     img: row.img,
+    barcode: row.barcode || '',
   };
 }
 
@@ -354,4 +379,27 @@ export function mapSettings(row) {
       pexels_api_key: row.pexels_api_key || '',
     },
   };
+}
+
+function ean13CheckDigit(d12) {
+  let sum = 0;
+  for (let i = 0; i < 12; i++) sum += Number(d12[i]) * (i % 2 === 0 ? 1 : 3);
+  return (10 - (sum % 10)) % 10;
+}
+
+export function barcodeExists(code, excludeId = null) {
+  const row = getDb()
+    .prepare('SELECT id FROM products WHERE barcode = ? AND id <> ?')
+    .get(code, excludeId ?? -1);
+  return !!row;
+}
+
+export function generateUniqueBarcode() {
+  for (let i = 0; i < 20; i++) {
+    // البادئة 2 (20–29) مخصصة للاستخدام الداخلي في المتاجر
+    const base = '2' + String(Math.floor(Math.random() * 1e11)).padStart(11, '0');
+    const code = base + ean13CheckDigit(base);
+    if (!barcodeExists(code)) return code;
+  }
+  throw new Error('Could not generate a unique barcode');
 }

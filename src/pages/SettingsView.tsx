@@ -24,7 +24,7 @@ export default function SettingsView({ settings, onSaved }: Props) {
     address_two: '',
     contact: '',
     tax: '',
-    symbol: '$',
+    symbol: ' ',
     percentage: '0',
     charge_tax: false,
     footer: '',

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, Category, Product, getUploadsBase } from '../api/client';
 import PhotoPicker from '../components/PhotoPicker';
+import BarcodePreview from '../components/BarcodePreview';
 
 type Props = {
   products: Product[];
@@ -19,6 +20,7 @@ const emptyProduct = {
   quantity: '0',
   trackStock: true,
   img: '',
+  barcode: '',
 };
 
 export default function CatalogView({
@@ -49,24 +51,38 @@ export default function CatalogView({
     setSelected((prev) => prev.filter((id) => products.some((p) => p.id === id)));
   }, [products, categories]);
 
-  const saveProduct = async () => {
-    if (!form.name.trim()) {
-      setError('Name is required');
-      return;
-    }
-    setError(null);
-    const fd = new FormData();
-    fd.append('id', form.id);
-    fd.append('name', form.name.trim());
-    fd.append('price', form.price || '0');
-    fd.append('category', form.category);
-    fd.append('quantity', form.quantity || '0');
-    fd.append('stock', form.trackStock ? '1' : 'on');
-    fd.append('img', form.img);
+const saveProduct = async () => {
+  if (!form.name.trim()) {
+    setError('Name is required');
+    return;
+  }
+  setError(null);
+  const fd = new FormData();
+  fd.append('id', form.id);
+  fd.append('name', form.name.trim());
+  fd.append('price', form.price || '0');
+  fd.append('category', form.category);
+  fd.append('quantity', form.quantity || '0');
+  fd.append('stock', form.trackStock ? '1' : 'on');
+  fd.append('img', form.img);
+  fd.append('barcode', form.barcode.trim());
+  try {
     await api.saveProduct(fd);
     setForm(emptyProduct);
     await onChanged();
-  };
+  } catch (err) {
+    setError(err instanceof Error ? err.message : 'Save failed');
+  }
+};
+const generateBarcode = async () => {
+  setError(null);
+  try {
+    const { barcode } = await api.generateBarcode();
+    setForm((f) => ({ ...f, barcode }));
+  } catch (err) {
+    setError(err instanceof Error ? err.message : 'Could not generate barcode');
+  }
+};
 
   const editProduct = (p: Product) => {
     setForm({
@@ -77,6 +93,7 @@ export default function CatalogView({
       quantity: String(p.quantity),
       trackStock: !!p.stock,
       img: p.img || '',
+      barcode: p.barcode || '',
     });
     setTab('products');
   };
@@ -213,6 +230,24 @@ export default function CatalogView({
               />
             </div>
             <div className="field">
+            <label>Barcode</label>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <input
+                value={form.barcode}
+                onChange={(e) => setForm({ ...form, barcode: e.target.value })}
+                placeholder="Scan or type barcode"
+              />
+              <button type="button" className="btn" onClick={generateBarcode}>
+                Generate
+              </button>
+            </div>
+            {form.barcode && (
+              <div style={{ marginTop: '0.5rem' }}>
+                <BarcodePreview value={form.barcode} />
+              </div>
+            )}
+          </div>
+            <div className="field">
               <label>Price</label>
               <input
                 type="number"
@@ -342,6 +377,9 @@ export default function CatalogView({
                       <div className="muted" style={{ fontSize: '0.8rem', marginTop: '0.15rem' }}>
                         {p.category || 'Uncategorized'}
                       </div>
+                      {p.barcode && (
+                        <div className="muted" style={{ fontSize: '0.75rem' }}>{p.barcode}</div>
+                      )}                     
                     </td>
                     <td>
                       {symbol}

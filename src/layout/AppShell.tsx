@@ -5,7 +5,9 @@ import { getUploadsBase } from '../api/client';
 
 export type NavView =
   | 'till'
+  | 'stock'
   | 'catalog'
+  | 'stats'
   | 'sales'
   | 'customers'
   | 'team'
@@ -35,8 +37,10 @@ export default function AppShell({
 
   const items: { id: NavView; label: string; show: boolean }[] = [
     { id: 'till', label: 'Till', show: true },
+    { id: 'stock', label: 'Stock', show: hasPerm('perm_products') },
     { id: 'catalog', label: 'Catalog', show: hasPerm('perm_products') || hasPerm('perm_categories') },
     { id: 'sales', label: 'Sales', show: hasPerm('perm_transactions') },
+    { id: 'stats', label: 'Stats', show: true},
     { id: 'customers', label: 'Customers', show: true },
     { id: 'team', label: 'Team', show: hasPerm('perm_users') },
     { id: 'settings', label: 'Settings', show: hasPerm('perm_settings') },

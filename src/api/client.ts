@@ -23,6 +23,7 @@ export type Product = {
   quantity: number;
   stock: number;
   img: string;
+  barcode: string;
 };
 
 export type Category = {
@@ -83,6 +84,29 @@ export type CartItem = {
   price: number;
   quantity: number;
   stock: number;
+};
+export type StockEntryItem = {
+  id: number;
+  entry_id: number;
+  product_id: number;
+  product_name: string;
+  barcode: string;
+  quantity: number;
+  unit_cost: number;
+};
+
+export type StockEntry = {
+  id: number;
+  ref_number: string;
+  supplier: string;
+  note: string;
+  user_id: number;
+  user: string;
+  total_cost: number;
+  created_at: string;
+  item_count?: number;
+  units?: number;
+  items?: StockEntryItem[];
 };
 
 export type Transaction = {
@@ -221,11 +245,14 @@ export const api = {
       body: JSON.stringify({ ids }),
     }),
 
-  findBySku: (skuCode: string) =>
+   findBySku: (skuCode: string) =>
     request<Product | null>('/inventory/product/sku', {
       method: 'POST',
       body: JSON.stringify({ skuCode }),
     }),
+
+  generateBarcode: () =>
+    request<{ barcode: string }>('/inventory/barcode/generate'),
 
   getCategories: () => request<Category[]>('/categories/all'),
 
@@ -336,6 +363,22 @@ export const api = {
     alt?: string;
   }) =>
     request<MediaItem>('/media/pexels/download', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  
+  getStockEntries: () => request<StockEntry[]>('/stock/entries'),
+
+  getStockEntry: (id: number) => request<StockEntry>(`/stock/entries/${id}`),
+
+  createStockEntry: (body: {
+    supplier: string;
+    note: string;
+    user_id: number;
+    user: string;
+    items: { product_id: number; quantity: number; unit_cost: number }[];
+  }) =>
+    request<StockEntry>('/stock/entries', {
       method: 'POST',
       body: JSON.stringify(body),
     }),

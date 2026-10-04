@@ -2,7 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
-import { getDb, mapProduct } from '../db.js';
+import { getDb, mapProduct, barcodeExists, generateUniqueBarcode } from '../db.js';
 import { requirePerm } from '../auth.js';
 
 export default function inventoryRouter(uploadsPath) {
@@ -18,6 +18,13 @@ export default function inventoryRouter(uploadsPath) {
     const rows = getDb().prepare('SELECT * FROM products ORDER BY name').all();
     res.json(rows.map(mapProduct));
   });
+  router.get('/barcode/generate', requirePerm('perm_products'), (_req, res) => {
+  try {
+    res.json({ barcode: generateUniqueBarcode() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
   router.get('/product/:productId', (req, res) => {
     const row = getDb()
@@ -27,12 +34,20 @@ export default function inventoryRouter(uploadsPath) {
   });
 
   router.post('/product/sku', (req, res) => {
-    const sku = req.body?.skuCode;
-    const row = getDb()
+  const sku = String(req.body?.skuCode ?? '').trim();
+  const db = getDb();
+
+  let row = sku
+    ? db.prepare('SELECT * FROM products WHERE barcode = ?').get(sku)
+    : undefined;
+
+  if (!row) {
+    row = db
       .prepare('SELECT * FROM products WHERE id = ? OR name = ?')
-      .get(parseInt(sku, 10) || -1, String(sku || ''));
-    res.json(mapProduct(row));
-  });
+      .get(parseInt(sku, 10) || -1, sku);
+  }
+  res.json(mapProduct(row));
+});
 
   router.post(
     '/product',
@@ -58,12 +73,16 @@ export default function inventoryRouter(uploadsPath) {
 
       const stock = body.stock === 'on' || body.stock === 0 || body.stock === '0' ? 0 : 1;
       const quantity = body.quantity === '' || body.quantity == null ? 0 : parseInt(body.quantity, 10);
-
+      const barcode = String(body.barcode ?? '').trim() || null;
+      const editingId = body.id ? parseInt(body.id, 10) : null;
+      if (barcode && barcodeExists(barcode, editingId)) {
+        return res.status(409).json({ error: 'Barcode already used by another product' });
+      }
       if (!body.id) {
         const result = getDb()
           .prepare(
-            `INSERT INTO products (name, price, category, quantity, stock, img)
-             VALUES (?, ?, ?, ?, ?, ?)`
+            `INSERT INTO products (name, price, category, quantity, stock, img, barcode)
+            VALUES (?, ?, ?, ?, ?, ?, ?)`
           )
           .run(
             body.name,
@@ -71,7 +90,8 @@ export default function inventoryRouter(uploadsPath) {
             body.category || '',
             quantity,
             stock,
-            image
+            image,
+            barcode
           );
         const row = getDb().prepare('SELECT * FROM products WHERE id = ?').get(result.lastInsertRowid);
         return res.json(mapProduct(row));
@@ -80,8 +100,8 @@ export default function inventoryRouter(uploadsPath) {
       const id = parseInt(body.id, 10);
       getDb()
         .prepare(
-          `UPDATE products SET name = ?, price = ?, category = ?, quantity = ?, stock = ?, img = ?
-           WHERE id = ?`
+          `UPDATE products SET name = ?, price = ?, category = ?, quantity = ?, stock = ?, img = ?, barcode = ?
+          WHERE id = ?`
         )
         .run(
           body.name,
@@ -90,6 +110,7 @@ export default function inventoryRouter(uploadsPath) {
           quantity,
           stock,
           image,
+          barcode,
           id
         );
       res.sendStatus(200);

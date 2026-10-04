@@ -12,7 +12,7 @@ import settingsRouter from './routes/settings.js';
 import transactionsRouter from './routes/transactions.js';
 import mediaRouter from './routes/media.js';
 import demoRouter from './routes/demo.js';
-
+import stockRouter from './routes/stock.js';
 export async function createServer({ dbPath, uploadsPath, jwtSecret }) {
   fs.mkdirSync(uploadsPath, { recursive: true });
   fs.mkdirSync(path.join(uploadsPath, 'library'), { recursive: true });
@@ -41,6 +41,7 @@ export async function createServer({ dbPath, uploadsPath, jwtSecret }) {
 
   app.use('/api/users', usersRouter);
   app.use('/api/inventory', authenticate, inventoryRouter(uploadsPath));
+  app.use('/api/stock', authenticate, stockRouter());
   app.use('/api/categories', authenticate, categoriesRouter);
   app.use('/api/customers', authenticate, customersRouter);
   app.use('/api/settings', authenticate, settingsRouter(uploadsPath));

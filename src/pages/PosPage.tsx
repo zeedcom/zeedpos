@@ -13,7 +13,8 @@ import TillView from './TillView';
 import CatalogView from './CatalogView';
 import SettingsView from './SettingsView';
 import TransactionsModal from '../components/TransactionsModal';
-
+import StockView from './StockView';
+import StatsView from './StatsView';
 export default function PosPage() {
   const { hasPerm } = useAuth();
   const [view, setView] = useState<NavView>('till');
@@ -81,8 +82,13 @@ export default function PosPage() {
         return settings?.store ? `${settings.store} · Till` : 'Till';
       case 'catalog':
         return 'Catalog';
+      case 'stock':
+        return 'Stock entry'; 
       case 'sales':
         return 'Sales history';
+
+      case 'stats':
+        return 'Statistics';
       case 'customers':
         return 'Customers';
       case 'team':
@@ -131,7 +137,9 @@ export default function PosPage() {
           onRefresh={loadAll}
         />
       )}
-
+{view === 'stats' && hasPerm('perm_transactions') && (
+  <StatsView products={products} symbol={symbol} />
+)}
       {view === 'catalog' && (
         <CatalogView
           products={products}
@@ -142,6 +150,9 @@ export default function PosPage() {
           onChanged={loadAll}
         />
       )}
+      {view === 'stock' && hasPerm('perm_products') && (
+  <StockView products={products} symbol={symbol} onChanged={loadAll} />
+)}
 
       {view === 'sales' && (
         <TransactionsModal
