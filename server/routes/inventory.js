@@ -72,7 +72,7 @@ export default function inventoryRouter(uploadsPath) {
       }
 
       const stock = body.stock === 'on' || body.stock === 0 || body.stock === '0' ? 0 : 1;
-      const quantity = body.quantity === '' || body.quantity == null ? 0 : parseInt(body.quantity, 10);
+      const quantity = body.quantity === '' || body.quantity == null ? 0 : parseFloat(body.quantity);
       const barcode = String(body.barcode ?? '').trim() || null;
       const editingId = body.id ? parseInt(body.id, 10) : null;
       if (barcode && barcodeExists(barcode, editingId)) {

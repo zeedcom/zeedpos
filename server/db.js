@@ -144,7 +144,7 @@ export async function initDatabase(filePath) {
       name TEXT NOT NULL,
       price REAL NOT NULL DEFAULT 0,
       category TEXT NOT NULL DEFAULT '',
-      quantity INTEGER NOT NULL DEFAULT 0,
+      quantity REAL NOT NULL DEFAULT 0,
       stock INTEGER NOT NULL DEFAULT 1,
       img TEXT NOT NULL DEFAULT '',
       barcode TEXT 
@@ -221,7 +221,7 @@ export async function initDatabase(filePath) {
       product_id INTEGER NOT NULL,
       product_name TEXT NOT NULL DEFAULT '',
       barcode TEXT NOT NULL DEFAULT '',
-      quantity INTEGER NOT NULL,
+      quantity REAL NOT NULL,
       unit_cost REAL NOT NULL DEFAULT 0
     );
     

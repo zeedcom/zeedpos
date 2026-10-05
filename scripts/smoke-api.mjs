@@ -112,14 +112,7 @@ try {
   );
   if (!tx.length) throw new Error('no transactions found');
 
-  console.log('SMOKE OK');
-  console.log(JSON.stringify({
-    health: health.message,
-    user: login.user.username,
-    productId: product.id,
-    stockAfterSale: after.quantity,
-    transactions: tx.length,
-  }, null, 2));
+
 } catch (err) {
   console.error('SMOKE FAILED', err);
   process.exitCode = 1;

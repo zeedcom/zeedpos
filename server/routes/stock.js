@@ -1,6 +1,9 @@
 import { Router } from 'express';
 import { getDb } from '../db.js';
 
+// Rounds to 3 decimals to avoid floating point errors (0.1 + 0.2 = 0.30000000000000004)
+const round3 = (n) => Math.round((n + Number.EPSILON) * 1000) / 1000;
+
 function mapEntry(row) {
   if (!row) return null;
   return {
@@ -39,7 +42,7 @@ export default function stockRouter() {
       .prepare(
         `SELECT e.*,
                 (SELECT COUNT(*) FROM stock_entry_items i WHERE i.entry_id = e.id) AS item_count,
-                (SELECT COALESCE(SUM(i.quantity), 0) FROM stock_entry_items i WHERE i.entry_id = e.id) AS units
+                (SELECT COALESCE(ROUND(SUM(i.quantity), 3), 0) FROM stock_entry_items i WHERE i.entry_id = e.id) AS units
            FROM stock_entries e
           ORDER BY e.id DESC
           LIMIT 200`
@@ -62,7 +65,6 @@ export default function stockRouter() {
 
   // Receive stock: creates the entry and increases product quantities atomically
   router.post('/entries', (req, res) => {
-
     const body = req.body || {};
     const rawItems = Array.isArray(body.items) ? body.items : [];
     if (!rawItems.length) {
@@ -76,14 +78,14 @@ export default function stockRouter() {
     const lines = [];
     for (const it of rawItems) {
       const productId = parseInt(it.product_id, 10);
-      const quantity = Number(it.quantity);
+      const quantity = round3(Number(it.quantity));
       const unitCost = Math.max(0, parseFloat(it.unit_cost) || 0);
 
       if (!Number.isInteger(productId) || productId <= 0) {
         return res.status(400).json({ error: 'Invalid product id' });
       }
-      if (!Number.isInteger(quantity) || quantity <= 0) {
-        return res.status(400).json({ error: 'Quantity must be a positive whole number' });
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        return res.status(400).json({ error: 'Quantity must be a number greater than 0' });
       }
       const product = getProduct.get(productId);
       if (!product) {
@@ -129,7 +131,9 @@ export default function stockRouter() {
           `INSERT INTO stock_entry_items (entry_id, product_id, product_name, barcode, quantity, unit_cost)
            VALUES (?, ?, ?, ?, ?, ?)`
         );
-        const addQty = db.prepare('UPDATE products SET quantity = quantity + ? WHERE id = ?');
+        const addQty = db.prepare(
+          'UPDATE products SET quantity = ROUND(quantity + ?, 3) WHERE id = ?'
+        );
 
         for (const l of lines) {
           insItem.run(entryId, l.productId, l.name, l.barcode, l.quantity, l.unitCost);

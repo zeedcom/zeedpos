@@ -31,7 +31,14 @@ const invalidRing: CSSProperties = {
   boxShadow: '0 0 0 2px rgba(220, 50, 50, 0.45)',
 };
 
-const isValidQty = (q: string) => /^\d+$/.test(q.trim()) && parseInt(q, 10) > 0;
+// Rounds to 3 decimals to avoid floating point errors (0.1 + 0.2 = 0.30000000000000004)
+const round3 = (n: number) => Math.round((n + Number.EPSILON) * 1000) / 1000;
+
+// 2.5 -> "2.5", 3 -> "3"
+const fmtQty = (n: number) => String(round3(Number(n) || 0));
+
+// Accepts: 5 / 5.5 / .5   Rejects: 0 / -1 / abc
+const isValidQty = (q: string) => /^(\d+\.?\d*|\.\d+)$/.test(q.trim()) && parseFloat(q) > 0;
 
 export default function StockView({ products, symbol, onChanged }: Props) {
   const { user } = useAuth();
@@ -108,7 +115,7 @@ export default function StockView({ products, symbol, onChanged }: Props) {
       if (existing) {
         return prev.map((l) =>
           l.productId === p.id
-            ? { ...l, quantity: String((parseInt(l.quantity, 10) || 0) + 1) }
+            ? { ...l, quantity: fmtQty((parseFloat(l.quantity) || 0) + 1) }
             : l
         );
       }
@@ -151,9 +158,11 @@ export default function StockView({ products, symbol, onChanged }: Props) {
     scanRef.current?.focus();
   };
 
-  const totalUnits = lines.reduce((n, l) => n + (parseInt(l.quantity, 10) || 0), 0);
+  const totalUnits = round3(
+    lines.reduce((n, l) => n + (parseFloat(l.quantity) || 0), 0)
+  );
   const totalCost = lines.reduce(
-    (s, l) => s + (parseInt(l.quantity, 10) || 0) * (parseFloat(l.unitCost) || 0),
+    (s, l) => s + (parseFloat(l.quantity) || 0) * (parseFloat(l.unitCost) || 0),
     0
   );
 
@@ -166,7 +175,7 @@ export default function StockView({ products, symbol, onChanged }: Props) {
     }
     const bad = lines.find((l) => !isValidQty(l.quantity));
     if (bad) {
-      setError(`Enter a valid whole quantity for “${bad.name}”`);
+      setError(`Enter a valid quantity (greater than 0) for “${bad.name}”`);
       return;
     }
 
@@ -179,7 +188,7 @@ export default function StockView({ products, symbol, onChanged }: Props) {
         user: user?.fullname || '',
         items: lines.map((l) => ({
           product_id: l.productId,
-          quantity: parseInt(l.quantity, 10),
+          quantity: round3(parseFloat(l.quantity) || 0),
           unit_cost: parseFloat(l.unitCost) || 0,
         })),
       });
@@ -319,7 +328,7 @@ export default function StockView({ products, symbol, onChanged }: Props) {
                     </span>
                     <span className="muted" style={{ whiteSpace: 'nowrap', fontSize: '0.8rem' }}>
                       {p.barcode || `#${p.id}`}
-                      {p.stock ? ` · ${p.quantity} in stock` : ' · not tracked'}
+                      {p.stock ? ` · ${fmtQty(p.quantity)} in stock` : ' · not tracked'}
                     </span>
                   </button>
                 ))}
@@ -333,17 +342,17 @@ export default function StockView({ products, symbol, onChanged }: Props) {
                 <thead>
                   <tr>
                     <th>Product</th>
-                    <th style={{ ...right, width: 56 }}>Now</th>
-                    <th style={{ ...right, width: 84 }}>Qty in</th>
+                    <th style={{ ...right, width: 72 }}>Now</th>
+                    <th style={{ ...right, width: 96 }}>Qty in</th>
                     <th style={{ ...right, width: 100 }}>Unit cost</th>
-                    <th style={{ ...right, width: 64 }}>After</th>
+                    <th style={{ ...right, width: 80 }}>After</th>
                     <th style={{ width: 40 }} />
                   </tr>
                 </thead>
                 <tbody>
                   {lines.map((l) => {
-                    const current = byId.get(l.productId)?.quantity ?? 0;
-                    const qty = parseInt(l.quantity, 10) || 0;
+                    const current = Number(byId.get(l.productId)?.quantity ?? 0);
+                    const qty = parseFloat(l.quantity) || 0;
                     const valid = isValidQty(l.quantity);
                     return (
                       <tr key={l.productId}>
@@ -355,12 +364,13 @@ export default function StockView({ products, symbol, onChanged }: Props) {
                             </div>
                           )}
                         </td>
-                        <td style={right}>{current}</td>
+                        <td style={right}>{fmtQty(current)}</td>
                         <td>
                           <input
                             type="number"
-                            min={1}
-                            step={1}
+                            inputMode="decimal"
+                            step="0.001"
+                            min={0}
                             value={l.quantity}
                             style={{ ...numInput, ...(valid ? {} : invalidRing) }}
                             onFocus={(e) => e.target.select()}
@@ -386,7 +396,7 @@ export default function StockView({ products, symbol, onChanged }: Props) {
                           />
                         </td>
                         <td style={right}>
-                          <strong>{current + qty}</strong>
+                          <strong>{fmtQty(current + qty)}</strong>
                         </td>
                         <td>
                           <button
@@ -510,7 +520,7 @@ export default function StockView({ products, symbol, onChanged }: Props) {
                         </div>
                       </td>
                       <td>{e.supplier || '—'}</td>
-                      <td style={right}>{e.units ?? '—'}</td>
+                      <td style={right}>{e.units != null ? fmtQty(Number(e.units)) : '—'}</td>
                       <td style={right}>
                         {symbol}
                         {Number(e.total_cost).toFixed(2)}
@@ -562,14 +572,14 @@ export default function StockView({ products, symbol, onChanged }: Props) {
                     <tr key={i.id}>
                       <td>{i.product_name}</td>
                       <td>{i.barcode || '—'}</td>
-                      <td style={right}>{i.quantity}</td>
+                      <td style={right}>{fmtQty(Number(i.quantity))}</td>
                       <td style={right}>
                         {symbol}
                         {Number(i.unit_cost).toFixed(2)}
                       </td>
                       <td style={right}>
                         {symbol}
-                        {(i.quantity * i.unit_cost).toFixed(2)}
+                        {(Number(i.quantity) * Number(i.unit_cost)).toFixed(2)}
                       </td>
                     </tr>
                   ))}

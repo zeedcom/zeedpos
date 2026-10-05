@@ -54,8 +54,6 @@ try {
     login.token
   );
 
-  console.log('LAN SMOKE OK');
-  console.log(JSON.stringify({ bound: '0.0.0.0', port, authRequired: true }, null, 2));
 } catch (err) {
   console.error('LAN SMOKE FAILED', err);
   process.exitCode = 1;

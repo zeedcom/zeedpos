@@ -199,21 +199,7 @@ const generateBarcode = async () => {
             Categories
           </button>
         )}
-        {canProducts && (
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.4rem' }}>
-            <button type="button" className="btn" disabled={busy} onClick={seedDemo}>
-              Seed demo
-            </button>
-            <button
-              type="button"
-              className="btn btn-danger"
-              disabled={busy || !selected.length}
-              onClick={bulkDelete}
-            >
-              Delete selected ({selected.length})
-            </button>
-          </div>
-        )}
+ 
       </div>
 
       {error && <div className="error">{error}</div>}
@@ -291,6 +277,7 @@ const generateBarcode = async () => {
                 <label>Quantity on hand</label>
                 <input
                   type="number"
+                  step="0.01"
                   min={0}
                   value={form.quantity}
                   onChange={(e) => setForm({ ...form, quantity: e.target.value })}

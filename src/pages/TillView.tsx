@@ -422,7 +422,7 @@ export default function TillView({
                   <button type="button" onClick={() => setQty(item.id, item.quantity - 1)}>
                     −
                   </button>
-                  <span>{item.quantity}</span>
+                  <input type='number' style={{ width: 50, textAlign: 'right' }} value={item.quantity} onChange={(e) => setQty(item.id, parseFloat(e.target.value) || 0)} />
                   <button type="button" onClick={() => setQty(item.id, item.quantity + 1)}>
                     +
                   </button>
