@@ -1,6 +1,6 @@
 {
   "name": "zeedpos",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "Modern desktop Point of Sale with LAN multi-terminal support",
   "author": "Hosting Domain",
   "private": true,
