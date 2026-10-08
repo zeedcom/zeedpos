@@ -1,5 +1,19 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+const on = (channel, cb) => {
+  const handler = (_e, payload) => cb(payload);
+  ipcRenderer.on(channel, handler);
+  return () => ipcRenderer.removeListener(channel, handler);
+};
+
+contextBridge.exposeInMainWorld('updater', {
+  onAvailable: (cb) => on('update:available', cb),
+  onProgress: (cb) => on('update:progress', cb),
+  onDownloaded: (cb) => on('update:downloaded', cb),
+  onError: (cb) => on('update:error', cb),
+  install: () => ipcRenderer.invoke('update:install'),
+  check: () => ipcRenderer.invoke('update:check'),
+});
 contextBridge.exposeInMainWorld('pos', {
 
   // -------------------------

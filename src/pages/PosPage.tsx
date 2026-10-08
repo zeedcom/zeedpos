@@ -15,6 +15,7 @@ import SettingsView from './SettingsView';
 import TransactionsModal from '../components/TransactionsModal';
 import StockView from './StockView';
 import StatsView from './StatsView';
+import UpdateNotifier from '../components/UpdateNotifier';
 export default function PosPage() {
   const { hasPerm } = useAuth();
   const [view, setView] = useState<NavView>('till');
@@ -462,6 +463,7 @@ function UsersPanel() {
           </tbody>
         </table>
       </div>
+      <UpdateNotifier />
     </div>
   );
 }

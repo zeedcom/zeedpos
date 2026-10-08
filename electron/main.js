@@ -17,7 +17,8 @@ import {
   activateLicense,
   validateLocalLicense,
 } from './license/licenseManager.js';
-
+import pkg from 'electron-updater';
+const { autoUpdater } = pkg;
 
 const __filename =
   fileURLToPath(import.meta.url);
@@ -365,7 +366,8 @@ function createWindow() {
     'closed',
     () => {
       mainWindow = null;
-    }
+      startUpdateChecks();
+}
   );
 }
 
@@ -560,7 +562,57 @@ ipcMain.on(
   }
 );
 
+/*
+|--------------------------------------------------------------------------
+| AUTO UPDATE
+|--------------------------------------------------------------------------
+*/
 
+autoUpdater.autoDownload = true;
+autoUpdater.autoInstallOnAppQuit = true;
+
+function sendToRenderer(channel, payload) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(channel, payload);
+  }
+}
+
+function safeCheck() {
+  autoUpdater.checkForUpdates().catch((err) => {
+    console.error('Update check failed:', err);
+  });
+}
+
+// تُسجَّل مرة واحدة فقط (خارج createWindow) لتجنب خطأ التسجيل المكرر
+autoUpdater.on('update-available', (info) =>
+  sendToRenderer('update:available', info.version));
+autoUpdater.on('download-progress', (p) =>
+  sendToRenderer('update:progress', Math.round(p.percent)));
+autoUpdater.on('update-downloaded', (info) =>
+  sendToRenderer('update:downloaded', info.version));
+autoUpdater.on('error', (err) => {
+  console.error('Updater error:', err);
+  sendToRenderer('update:error', err?.message || 'Update error');
+});
+
+ipcMain.handle('update:install', () => {
+  autoUpdater.quitAndInstall();
+});
+
+ipcMain.handle('update:check', async () => {
+  if (isDev) return;
+  await autoUpdater.checkForUpdates();
+});
+
+function startUpdateChecks() {
+  if (isDev) return;
+
+  // انتظر تحميل الواجهة حتى تكون مستمعات React جاهزة
+  mainWindow.webContents.once('did-finish-load', () => {
+    safeCheck();
+    setInterval(safeCheck, 4 * 60 * 60 * 1000);
+  });
+}
 /*
 |--------------------------------------------------------------------------
 | START APPLICATION
