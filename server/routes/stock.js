@@ -32,6 +32,26 @@ function mapItem(row) {
     unit_cost: row.unit_cost,
   };
 }
+// Reverts the quantities of an entry's lines. Returns an error string if any product would go negative.
+function revertEntry(db, entryId) {
+  const items = db
+    .prepare('SELECT product_id, product_name, quantity FROM stock_entry_items WHERE entry_id = ?')
+    .all(entryId);
+  const getQty = db.prepare('SELECT quantity FROM products WHERE id = ?');
+  const subQty = db.prepare('UPDATE products SET quantity = ROUND(quantity - ?, 3) WHERE id = ?');
+
+  for (const it of items) {
+    const p = getQty.get(it.product_id);
+    // Product may have been deleted from the catalog: nothing to revert
+    if (!p) continue;
+    if (round3(p.quantity - it.quantity) < 0) {
+      throw new Error(
+        `Cannot revert "${it.product_name}": part of this stock was already sold (current ${p.quantity}, entry ${it.quantity})`
+      );
+    }
+    subQty.run(it.quantity, it.product_id);
+  }
+}
 
 export default function stockRouter() {
   const router = Router();
@@ -151,6 +171,117 @@ export default function stockRouter() {
       .all(entryId);
     res.status(201).json({ ...mapEntry(row), items: items.map(mapItem) });
   });
+    // Update an entry: revert old lines, insert new lines (all in one transaction)
+  router.put('/entries/:id', (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    const body = req.body || {};
+    const rawItems = Array.isArray(body.items) ? body.items : [];
+    if (!rawItems.length) {
+      return res.status(400).json({ error: 'No items provided' });
+    }
 
+    const db = getDb();
+    const existing = db.prepare('SELECT * FROM stock_entries WHERE id = ?').get(id);
+    if (!existing) return res.status(404).json({ error: 'Stock entry not found' });
+
+    const getProduct = db.prepare('SELECT id, name, barcode, stock FROM products WHERE id = ?');
+
+    const lines = [];
+    for (const it of rawItems) {
+      const productId = parseInt(it.product_id, 10);
+      const quantity = round3(Number(it.quantity));
+      const unitCost = Math.max(0, parseFloat(it.unit_cost) || 0);
+
+      if (!Number.isInteger(productId) || productId <= 0) {
+        return res.status(400).json({ error: 'Invalid product id' });
+      }
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        return res.status(400).json({ error: 'Quantity must be a number greater than 0' });
+      }
+      const product = getProduct.get(productId);
+      if (!product) {
+        return res.status(400).json({ error: `Product #${productId} not found` });
+      }
+      if (!product.stock) {
+        return res.status(400).json({
+          error: `"${product.name}" does not track inventory. Enable "Track inventory" in Catalog first.`,
+        });
+      }
+      lines.push({
+        productId,
+        name: product.name,
+        barcode: product.barcode || '',
+        quantity,
+        unitCost,
+      });
+    }
+
+    const totalCost = lines.reduce((s, l) => s + l.quantity * l.unitCost, 0);
+    const supplier = String(body.supplier || '').trim().slice(0, 200);
+    const note = String(body.note || '').trim().slice(0, 1000);
+
+    try {
+      db.transaction(() => {
+        // 1) Undo the old quantities (throws if it would make stock negative)
+        revertEntry(db, id);
+
+        // 2) Replace the lines
+        db.prepare('DELETE FROM stock_entry_items WHERE entry_id = ?').run(id);
+
+        const insItem = db.prepare(
+          `INSERT INTO stock_entry_items (entry_id, product_id, product_name, barcode, quantity, unit_cost)
+           VALUES (?, ?, ?, ?, ?, ?)`
+        );
+        const addQty = db.prepare(
+          'UPDATE products SET quantity = ROUND(quantity + ?, 3) WHERE id = ?'
+        );
+        for (const l of lines) {
+          insItem.run(id, l.productId, l.name, l.barcode, l.quantity, l.unitCost);
+          addQty.run(l.quantity, l.productId);
+        }
+
+        // 3) Update the header (keep ref_number, user_id, user_name, created_at)
+        db.prepare(
+          'UPDATE stock_entries SET supplier = ?, note = ?, total_cost = ? WHERE id = ?'
+        ).run(supplier, note, totalCost, id);
+      })();
+    } catch (err) {
+      console.error(err);
+      const isRevert = String(err.message).startsWith('Cannot revert');
+      return res
+        .status(isRevert ? 400 : 500)
+        .json({ error: isRevert ? err.message : 'Could not update stock entry' });
+    }
+
+    const row = db.prepare('SELECT * FROM stock_entries WHERE id = ?').get(id);
+    const items = db
+      .prepare('SELECT * FROM stock_entry_items WHERE entry_id = ? ORDER BY id')
+      .all(id);
+    res.json({ ...mapEntry(row), items: items.map(mapItem) });
+  });
+
+  // Delete an entry: revert quantities, then remove entry and lines
+  router.delete('/entries/:id', (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    const db = getDb();
+    const existing = db.prepare('SELECT id FROM stock_entries WHERE id = ?').get(id);
+    if (!existing) return res.status(404).json({ error: 'Stock entry not found' });
+
+    try {
+      db.transaction(() => {
+        revertEntry(db, id);
+        db.prepare('DELETE FROM stock_entry_items WHERE entry_id = ?').run(id);
+        db.prepare('DELETE FROM stock_entries WHERE id = ?').run(id);
+      })();
+    } catch (err) {
+      console.error(err);
+      const isRevert = String(err.message).startsWith('Cannot revert');
+      return res
+        .status(isRevert ? 400 : 500)
+        .json({ error: isRevert ? err.message : 'Could not delete stock entry' });
+    }
+
+    res.json({ ok: true });
+  });
   return router;
 }

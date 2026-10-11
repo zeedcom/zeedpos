@@ -604,11 +604,10 @@ ipcMain.handle('update:check', async () => {
   await autoUpdater.checkForUpdates();
 });
 
-function startUpdateChecks() {
-  if (isDev) return;
+function startUpdateChecks(win) {
+  if (isDev || !win) return;
 
-  // انتظر تحميل الواجهة حتى تكون مستمعات React جاهزة
-  mainWindow.webContents.once('did-finish-load', () => {
+  win.webContents.once('did-finish-load', () => {
     safeCheck();
     setInterval(safeCheck, 4 * 60 * 60 * 1000);
   });

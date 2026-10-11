@@ -16,6 +16,8 @@ type Line = {
   barcode: string;
   quantity: string;
   unitCost: string;
+  // Quantity already saved in the entry being edited (0 for a new entry)
+  originalQty: number;
 };
 
 const numInput: CSSProperties = {
@@ -54,6 +56,8 @@ export default function StockView({ products, symbol, onChanged }: Props) {
   const [entries, setEntries] = useState<StockEntry[]>([]);
   const [historyFilter, setHistoryFilter] = useState('');
   const [detail, setDetail] = useState<StockEntry | null>(null);
+  // null = creating a new entry, number = editing that entry
+  const [editingId, setEditingId] = useState<number | null>(null);
 
   const byId = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
 
@@ -127,6 +131,7 @@ export default function StockView({ products, symbol, onChanged }: Props) {
           barcode: p.barcode || '',
           quantity: '1',
           unitCost: '',
+          originalQty: 0,
         },
       ];
     });
@@ -158,6 +163,15 @@ export default function StockView({ products, symbol, onChanged }: Props) {
     scanRef.current?.focus();
   };
 
+  const resetForm = () => {
+    setLines([]);
+    setSupplier('');
+    setNote('');
+    setQuery('');
+    setEditingId(null);
+    scanRef.current?.focus();
+  };
+
   const totalUnits = round3(
     lines.reduce((n, l) => n + (parseFloat(l.quantity) || 0), 0)
   );
@@ -179,23 +193,27 @@ export default function StockView({ products, symbol, onChanged }: Props) {
       return;
     }
 
+    const payload = {
+      supplier: supplier.trim(),
+      note: note.trim(),
+      user_id: user?._id || 0,
+      user: user?.fullname || '',
+      items: lines.map((l) => ({
+        product_id: l.productId,
+        quantity: round3(parseFloat(l.quantity) || 0),
+        unit_cost: parseFloat(l.unitCost) || 0,
+      })),
+    };
+
+    const wasEditing = editingId !== null;
+
     setBusy(true);
     try {
-      const entry = await api.createStockEntry({
-        supplier: supplier.trim(),
-        note: note.trim(),
-        user_id: user?._id || 0,
-        user: user?.fullname || '',
-        items: lines.map((l) => ({
-          product_id: l.productId,
-          quantity: round3(parseFloat(l.quantity) || 0),
-          unit_cost: parseFloat(l.unitCost) || 0,
-        })),
-      });
-      setLines([]);
-      setSupplier('');
-      setNote('');
-      setSuccess(`Stock entry ${entry?.ref_number ?? ''} saved`);
+      const entry = wasEditing
+        ? await api.updateStockEntry(editingId as number, payload)
+        : await api.createStockEntry(payload);
+      resetForm();
+      setSuccess(`Stock entry ${entry?.ref_number ?? ''} ${wasEditing ? 'updated' : 'saved'}`);
       await onChanged();
       await loadEntries();
       scanRef.current?.focus();
@@ -211,6 +229,53 @@ export default function StockView({ products, symbol, onChanged }: Props) {
       setDetail(await api.getStockEntry(id));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load entry');
+    }
+  };
+
+  // Load an existing entry into the form for editing
+  const startEdit = async (id: number) => {
+    setError(null);
+    setSuccess(null);
+    try {
+      const entry = await api.getStockEntry(id);
+      setEditingId(entry.id);
+      setSupplier(entry.supplier || '');
+      setNote(entry.note || '');
+      setQuery('');
+      setLines(
+        (entry.items || []).map((i: any) => ({
+          productId: i.product_id,
+          name: i.product_name,
+          barcode: i.barcode || '',
+          quantity: fmtQty(Number(i.quantity)),
+          unitCost: Number(i.unit_cost) ? String(i.unit_cost) : '',
+          originalQty: Number(i.quantity),
+        }))
+      );
+      setDetail(null);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      scanRef.current?.focus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load entry');
+    }
+  };
+
+  const deleteEntry = async (e: StockEntry) => {
+    const label = e.ref_number || String(e.id);
+    if (!window.confirm(`Delete stock entry ${label}? Stock quantities will be reverted.`)) {
+      return;
+    }
+    setError(null);
+    setSuccess(null);
+    try {
+      await api.deleteStockEntry(e.id);
+      if (editingId === e.id) resetForm();
+      setDetail(null);
+      setSuccess(`Stock entry ${label} deleted`);
+      await onChanged();
+      await loadEntries();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete entry');
     }
   };
 
@@ -269,9 +334,11 @@ export default function StockView({ products, symbol, onChanged }: Props) {
           alignItems: 'start',
         }}
       >
-        {/* ---------------- New entry ---------------- */}
+        {/* ---------------- New / edit entry ---------------- */}
         <div className="panel" style={{ padding: '1rem', minWidth: 0 }}>
-          <h3 style={{ marginTop: 0, marginBottom: '0.75rem' }}>Receive stock</h3>
+          <h3 style={{ marginTop: 0, marginBottom: '0.75rem' }}>
+            {editingId ? 'Edit stock entry' : 'Receive stock'}
+          </h3>
 
           <div className="field">
             <label>Scan barcode or search product</label>
@@ -351,7 +418,9 @@ export default function StockView({ products, symbol, onChanged }: Props) {
                 </thead>
                 <tbody>
                   {lines.map((l) => {
-                    const current = Number(byId.get(l.productId)?.quantity ?? 0);
+                    // While editing, the current stock already includes this entry's quantity,
+                    // so we subtract it to show the stock "without" this entry.
+                    const current = Number(byId.get(l.productId)?.quantity ?? 0) - l.originalQty;
                     const qty = parseFloat(l.quantity) || 0;
                     const valid = isValidQty(l.quantity);
                     return (
@@ -468,10 +537,10 @@ export default function StockView({ products, symbol, onChanged }: Props) {
               <button
                 type="button"
                 className="btn"
-                disabled={busy || !lines.length}
-                onClick={() => setLines([])}
+                disabled={busy || (!lines.length && !editingId)}
+                onClick={resetForm}
               >
-                Clear
+                {editingId ? 'Cancel edit' : 'Clear'}
               </button>
               <button
                 type="button"
@@ -479,7 +548,7 @@ export default function StockView({ products, symbol, onChanged }: Props) {
                 disabled={busy || !lines.length}
                 onClick={saveEntry}
               >
-                {busy ? 'Saving…' : 'Save entry'}
+                {busy ? 'Saving…' : editingId ? 'Update entry' : 'Save entry'}
               </button>
             </div>
           </div>
@@ -505,12 +574,15 @@ export default function StockView({ products, symbol, onChanged }: Props) {
                     <th>Supplier</th>
                     <th style={right}>Units</th>
                     <th style={right}>Cost</th>
-                    <th style={{ width: 64 }} />
+                    <th style={{ width: 190 }} />
                   </tr>
                 </thead>
                 <tbody>
                   {visibleEntries.map((e) => (
-                    <tr key={e.id}>
+                    <tr
+                      key={e.id}
+                      style={editingId === e.id ? { background: 'rgba(100, 150, 255, 0.12)' } : undefined}
+                    >
                       <td>
                         <div>
                           <strong>{e.ref_number || e.id}</strong>
@@ -525,9 +597,25 @@ export default function StockView({ products, symbol, onChanged }: Props) {
                         {symbol}
                         {Number(e.total_cost).toFixed(2)}
                       </td>
-                      <td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
                         <button type="button" className="btn" onClick={() => openDetail(e.id)}>
                           View
+                        </button>{' '}
+                        <button
+                          type="button"
+                          className="btn"
+                          disabled={busy}
+                          onClick={() => startEdit(e.id)}
+                        >
+                          Edit
+                        </button>{' '}
+                        <button
+                          type="button"
+                          className="btn btn-danger"
+                          disabled={busy}
+                          onClick={() => deleteEntry(e)}
+                        >
+                          Delete
                         </button>
                       </td>
                     </tr>
@@ -593,6 +681,21 @@ export default function StockView({ products, symbol, onChanged }: Props) {
                 {Number(detail.total_cost).toFixed(2)}
               </strong>
             </p>
+            <div
+              style={{
+                display: 'flex',
+                gap: '0.5rem',
+                justifyContent: 'flex-end',
+                marginTop: '1rem',
+              }}
+            >
+              <button type="button" className="btn" onClick={() => startEdit(detail.id)}>
+                Edit
+              </button>
+              <button type="button" className="btn btn-danger" onClick={() => deleteEntry(detail)}>
+                Delete
+              </button>
+            </div>
           </>
         )}
       </Modal>

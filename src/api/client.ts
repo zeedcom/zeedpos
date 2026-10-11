@@ -382,4 +382,9 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+updateStockEntry: (id: number, data: any) =>
+  request(`/stock/entries/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+
+deleteStockEntry: (id: number) =>
+  request(`/stock/entries/${id}`, { method: 'DELETE' }),
 };
