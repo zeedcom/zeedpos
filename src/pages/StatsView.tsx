@@ -98,21 +98,34 @@ export default function StatsView({ products, symbol }: Props) {
   const stats = useMemo(() => {
     if (!bounds) return null;
 
+    // Current weighted average cost per product (used for COGS)
+    const costOf = new Map(products.map((p) => [p.id, Number(p.avg_cost) || 0]));
+
     const time = (t: Transaction) => new Date(t.date).getTime();
     const cur = txs.filter((t) => time(t) >= bounds.start);
     const prev = txs.filter((t) => time(t) >= bounds.prevStart && time(t) < bounds.start);
 
     const summarize = (list: Transaction[]) => {
       const revenue = list.reduce((s, t) => s + Number(t.total || 0), 0);
+      const tax = list.reduce((s, t) => s + Number(t.tax || 0), 0);
       const items = list.reduce(
         (s, t) => s + (t.items || []).reduce((n, i) => n + Number(i.quantity || 0), 0),
+        0
+      );
+      const cost = list.reduce(
+        (s, t) =>
+          s +
+          (t.items || []).reduce(
+            (n, i) => n + (costOf.get(i.id) ?? 0) * Number(i.quantity || 0),
+            0
+          ),
         0
       );
       return {
         revenue,
         orders: list.length,
         items,
-        avg: list.length ? revenue / list.length : 0,
+        net: revenue - tax - cost,
       };
     };
 
@@ -164,7 +177,7 @@ export default function StatsView({ products, symbol }: Props) {
       top,
       pay,
     };
-  }, [txs, bounds, range]);
+  }, [txs, bounds, range, products]);
 
   const lowStock = useMemo(
     () =>
@@ -183,7 +196,8 @@ export default function StatsView({ products, symbol }: Props) {
     if (!prev) {
       return <span className="muted">{cur ? `new vs ${prevLabel}` : '—'}</span>;
     }
-    const pct = ((cur - prev) / prev) * 100;
+    // Math.abs so a negative previous value does not flip the arrow
+    const pct = ((cur - prev) / Math.abs(prev)) * 100;
     const up = pct >= 0;
     return (
       <span style={{ color: up ? '#16a34a' : '#dc2626' }}>
@@ -253,9 +267,9 @@ export default function StatsView({ products, symbol }: Props) {
               foot={<Delta cur={stats.now.orders} prev={stats.before.orders} />}
             />
             <Kpi
-              label="Average order"
-              value={money(stats.now.avg)}
-              foot={<Delta cur={stats.now.avg} prev={stats.before.avg} />}
+              label="Net revenue"
+              value={money(stats.now.net)}
+              foot={<Delta cur={stats.now.net} prev={stats.before.net} />}
             />
             <Kpi
               label="Items sold"

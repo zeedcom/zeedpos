@@ -79,40 +79,50 @@ export default function inventoryRouter(uploadsPath) {
         return res.status(409).json({ error: 'Barcode already used by another product' });
       }
       if (!body.id) {
-        const result = getDb()
-          .prepare(
-            `INSERT INTO products (name, price, category, quantity, stock, img, barcode)
-            VALUES (?, ?, ?, ?, ?, ?, ?)`
-          )
-          .run(
-            body.name,
-            parseFloat(body.price) || 0,
-            body.category || '',
-            quantity,
-            stock,
-            image,
-            barcode
-          );
+        const initialCost = parseFloat(body.cost) || 0;
+
+const result = getDb()
+  .prepare(
+    `INSERT INTO products (name, price, category, quantity, stock, img, barcode, avg_cost)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  )
+  .run(
+    body.name,
+    parseFloat(body.price) || 0,
+    body.category || '',
+    quantity,
+    stock,
+    image,
+    barcode,
+    initialCost
+  );
         const row = getDb().prepare('SELECT * FROM products WHERE id = ?').get(result.lastInsertRowid);
         return res.json(mapProduct(row));
       }
 
       const id = parseInt(body.id, 10);
-      getDb()
-        .prepare(
-          `UPDATE products SET name = ?, price = ?, category = ?, quantity = ?, stock = ?, img = ?, barcode = ?
-          WHERE id = ?`
-        )
-        .run(
-          body.name,
-          parseFloat(body.price) || 0,
-          body.category || '',
-          quantity,
-          stock,
-          image,
-          barcode,
-          id
-        );
+const existing = getDb().prepare('SELECT avg_cost FROM products WHERE id = ?').get(id);
+const avgCost =
+  existing && Number(existing.avg_cost) > 0
+    ? Number(existing.avg_cost)
+    : parseFloat(body.cost) || 0;
+
+getDb()
+  .prepare(
+    `UPDATE products SET name = ?, price = ?, category = ?, quantity = ?, stock = ?, img = ?, barcode = ?, avg_cost = ?
+    WHERE id = ?`
+  )
+  .run(
+    body.name,
+    parseFloat(body.price) || 0,
+    body.category || '',
+    quantity,
+    stock,
+    image,
+    barcode,
+    avgCost,
+    id
+  );
       res.sendStatus(200);
     }
   );

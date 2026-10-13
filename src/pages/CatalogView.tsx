@@ -19,8 +19,10 @@ const emptyProduct = {
   category: '',
   quantity: '0',
   trackStock: true,
+  cost: '',
   img: '',
   barcode: '',
+  avgCost: '0',
 };
 
 export default function CatalogView({
@@ -63,6 +65,7 @@ const saveProduct = async () => {
   fd.append('price', form.price || '0');
   fd.append('category', form.category);
   fd.append('quantity', form.quantity || '0');
+  fd.append('cost', form.cost || '0');
   fd.append('stock', form.trackStock ? '1' : 'on');
   fd.append('img', form.img);
   fd.append('barcode', form.barcode.trim());
@@ -90,7 +93,9 @@ const generateBarcode = async () => {
       name: p.name,
       price: String(p.price),
       category: p.category,
+      avgCost: String(p.avg_cost ?? 0),
       quantity: String(p.quantity),
+      cost: '',
       trackStock: !!p.stock,
       img: p.img || '',
       barcode: p.barcode || '',
@@ -177,6 +182,17 @@ const generateBarcode = async () => {
     await api.deleteCategory(id);
     await onChanged();
   };
+  const marginOf = (p: Product) => {
+  const price = Number(p.price);
+  const cost = Number(p.avg_cost ?? 0);
+  if (!price || !cost) return null;
+  return ((price - cost) / price) * 100;
+};
+
+const inventoryValue = visible.reduce(
+  (sum, p) => sum + (p.stock ? Number(p.quantity) * Number(p.avg_cost ?? 0) : 0),
+  0
+);
 
   return (
     <div>
@@ -243,6 +259,15 @@ const generateBarcode = async () => {
                 onChange={(e) => setForm({ ...form, price: e.target.value })}
               />
             </div>
+            {form.id && form.trackStock && (
+              <div className="field">
+                <label>Weighted avg cost</label>
+                <input value={Number(form.avgCost).toFixed(2)} readOnly disabled />
+                <div className="muted" style={{ fontSize: '0.75rem', marginTop: '0.25rem' }}>
+                  Updated automatically from stock entries
+                </div>
+              </div>
+            )}
             <div className="field">
               <label>Category</label>
               <select
@@ -326,6 +351,8 @@ const generateBarcode = async () => {
                   <th>ID</th>
                   <th>Name</th>
                   <th>Price</th>
+
+<th>Avg cost</th>
                   <th>Stock</th>
                   <th />
                 </tr>
@@ -369,9 +396,17 @@ const generateBarcode = async () => {
                       )}                     
                     </td>
                     <td>
-                      {symbol}
-                      {Number(p.price).toFixed(2)}
-                    </td>
+  {symbol}
+  {Number(p.price).toFixed(2)}
+  {marginOf(p) !== null && (
+    <div className="muted" style={{ fontSize: '0.75rem' }}>
+      Margin {marginOf(p)!.toFixed(1)}%
+    </div>
+  )}
+</td>
+<td>
+  {p.stock ? `${symbol}${Number(p.avg_cost ?? 0).toFixed(2)}` : '—'}
+</td>
                     <td>{p.stock ? p.quantity : '—'}</td>
                     <td>
                       <button type="button" className="btn" onClick={() => editProduct(p)}>

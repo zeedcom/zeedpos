@@ -49,7 +49,9 @@ export default function TransactionsModal({
   const [status, setStatus] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-
+  const [selected, setSelected] = useState<Transaction | null>(null);
+const [toDelete, setToDelete] = useState<Transaction | null>(null);
+const [deleting, setDeleting] = useState(false);
   const load = async () => {
     setError(null);
     setLoading(true);
@@ -72,7 +74,20 @@ export default function TransactionsModal({
       setLoading(false);
     }
   };
-
+const handleDelete = async () => {
+  if (!toDelete) return;
+  setDeleting(true);
+  setError(null);
+  try {
+    await api.deleteTransaction(toDelete.id);
+    setRows((prev) => prev.filter((r) => r.id !== toDelete.id));
+    setToDelete(null);
+  } catch (err) {
+    setError(err instanceof Error ? err.message : 'Failed to delete');
+  } finally {
+    setDeleting(false);
+  }
+};
   useEffect(() => {
     if (open || embedded) load();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- load on open; Filter button refreshes
@@ -132,6 +147,7 @@ export default function TransactionsModal({
             <th>Total</th>
             <th>Paid</th>
             <th>Status</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -151,11 +167,88 @@ export default function TransactionsModal({
                 {Number(r.paid).toFixed(2)}
               </td>
               <td>{r.status === 1 ? 'Paid' : 'Open'}</td>
+              <td style={{ whiteSpace: 'nowrap' }}>
+                <button className="btn" type="button" onClick={() => setSelected(r)}>
+                  View
+                </button>{' '}
+                <button className="btn btn-danger" type="button" onClick={() => setToDelete(r)}>
+                  Delete
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
       {!rows.length && !loading && <div className="empty">No transactions in this range</div>}
+      {/* View details */}
+<Modal
+  title={selected ? `Transaction #${selected.id}` : 'Transaction'}
+  open={!!selected}
+  onClose={() => setSelected(null)}
+>
+  {selected && (
+    <div>
+      <p><strong>Ref:</strong> {selected.ref_number || '-'}</p>
+      <p><strong>Date:</strong> {new Date(selected.date).toLocaleString()}</p>
+      <p><strong>Cashier:</strong> {selected.user}</p>
+      <p><strong>Till:</strong> {selected.till}</p>
+      <p><strong>Customer:</strong> {selected.customer_name || '-'}</p>
+      <p><strong>Status:</strong> {selected.status === 1 ? 'Paid' : 'Open'}</p>
+
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th>Qty</th>
+            <th>Price</th>
+            <th>Subtotal</th>
+          </tr>
+        </thead>
+        <tbody>
+          {(selected.items ?? []).map((it) => (
+            <tr key={it.id}>
+              <td>{it.name}</td>
+              <td>{it.quantity}</td>
+              <td>{symbol}{Number(it.price).toFixed(2)}</td>
+              <td>{symbol}{(it.quantity * Number(it.price)).toFixed(2)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <p><strong>Subtotal:</strong> {symbol}{Number(selected.subtotal).toFixed(2)}</p>
+      <p><strong>Discount:</strong> {symbol}{Number(selected.discount).toFixed(2)}</p>
+      <p><strong>Tax:</strong> {symbol}{Number(selected.tax).toFixed(2)}</p>
+      <p><strong>Total:</strong> {symbol}{Number(selected.total).toFixed(2)}</p>
+      <p><strong>Paid:</strong> {symbol}{Number(selected.paid).toFixed(2)}</p>
+      <p><strong>Change:</strong> {symbol}{Number(selected.change).toFixed(2)}</p>
+    </div>
+  )}
+</Modal>
+
+{/* Delete confirmation */}
+<Modal
+  title="Delete transaction"
+  open={!!toDelete}
+  onClose={() => setToDelete(null)}
+>
+  <p>
+    Are you sure you want to delete transaction #{toDelete?.id}? This cannot be undone.
+  </p>
+  <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+    <button className="btn" type="button" onClick={() => setToDelete(null)}>
+      Cancel
+    </button>
+    <button
+      className="btn btn-danger"
+      type="button"
+      onClick={handleDelete}
+      disabled={deleting}
+    >
+      {deleting ? 'Deleting…' : 'Delete'}
+    </button>
+  </div>
+</Modal>
     </>
   );
 

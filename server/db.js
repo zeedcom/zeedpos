@@ -235,7 +235,10 @@ export async function initDatabase(filePath) {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_products_barcode
   ON products(barcode) WHERE barcode IS NOT NULL AND barcode <> '';
   `);
-
+const cols = db.prepare('PRAGMA table_info(products)').all();
+if (!cols.some((c) => c.name === 'avg_cost')) {
+  db.exec('ALTER TABLE products ADD COLUMN avg_cost REAL NOT NULL DEFAULT 0');
+}
   migrateSchema();
   seedDefaults();
   persist();
@@ -300,13 +303,30 @@ export function mapProduct(row) {
     name: row.name,
     price: row.price,
     category: row.category,
+    avg_cost: Number(row.avg_cost) || 0,
     quantity: row.quantity,
     stock: row.stock,
     img: row.img,
     barcode: row.barcode || '',
   };
 }
+/** Weighted average cost: call inside a db.transaction. */
+export function applyStockIn(db, productId, qty, unitCost) {
+  const p = db
+    .prepare('SELECT quantity, avg_cost FROM products WHERE id = ?')
+    .get(productId);
+  if (!p) throw new Error(`Product ${productId} not found`);
 
+  const curQty = Number(p.quantity) || 0;
+  const oldQty = Math.max(curQty, 0);        // المخزون السالب لا يدخل في الحساب
+  const oldCost = Number(p.avg_cost) || 0;
+  const base = oldQty + qty;
+
+  const avg = base > 0 ? (oldQty * oldCost + qty * unitCost) / base : unitCost;
+
+  db.prepare('UPDATE products SET quantity = ?, avg_cost = ? WHERE id = ?')
+    .run(curQty + qty, Number(avg.toFixed(4)), productId);
+}
 export function mapCategory(row) {
   if (!row) return null;
   return {

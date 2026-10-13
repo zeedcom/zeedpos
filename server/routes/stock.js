@@ -3,7 +3,26 @@ import { getDb } from '../db.js';
 
 // Rounds to 3 decimals to avoid floating point errors (0.1 + 0.2 = 0.30000000000000004)
 const round3 = (n) => Math.round((n + Number.EPSILON) * 1000) / 1000;
+// Adds stock and recalculates weighted average cost
+function stockIn(db, productId, qty, unitCost) {
+  const p = db
+    .prepare('SELECT quantity, avg_cost FROM products WHERE id = ?')
+    .get(productId);
+  if (!p) return;
 
+  const curQty = Number(p.quantity) || 0;
+  const baseQty = Math.max(curQty, 0); // المخزون السالب لا يدخل في الحساب
+  const baseCost = Number(p.avg_cost) || 0;
+  const newQty = round3(curQty + qty);
+  const denom = baseQty + qty;
+  const avg = denom > 0 ? (baseQty * baseCost + qty * unitCost) / denom : unitCost;
+
+  db.prepare('UPDATE products SET quantity = ?, avg_cost = ? WHERE id = ?').run(
+    newQty,
+    Math.round(avg * 10000) / 10000,
+    productId
+  );
+}
 function mapEntry(row) {
   if (!row) return null;
   return {
@@ -35,21 +54,31 @@ function mapItem(row) {
 // Reverts the quantities of an entry's lines. Returns an error string if any product would go negative.
 function revertEntry(db, entryId) {
   const items = db
-    .prepare('SELECT product_id, product_name, quantity FROM stock_entry_items WHERE entry_id = ?')
+    .prepare(
+      'SELECT product_id, product_name, quantity, unit_cost FROM stock_entry_items WHERE entry_id = ?'
+    )
     .all(entryId);
-  const getQty = db.prepare('SELECT quantity FROM products WHERE id = ?');
-  const subQty = db.prepare('UPDATE products SET quantity = ROUND(quantity - ?, 3) WHERE id = ?');
+  const getP = db.prepare('SELECT quantity, avg_cost FROM products WHERE id = ?');
+  const upd = db.prepare('UPDATE products SET quantity = ?, avg_cost = ? WHERE id = ?');
 
   for (const it of items) {
-    const p = getQty.get(it.product_id);
-    // Product may have been deleted from the catalog: nothing to revert
+    const p = getP.get(it.product_id);
     if (!p) continue;
-    if (round3(p.quantity - it.quantity) < 0) {
+
+    const newQty = round3(p.quantity - it.quantity);
+    if (newQty < 0) {
       throw new Error(
         `Cannot revert "${it.product_name}": part of this stock was already sold (current ${p.quantity}, entry ${it.quantity})`
       );
     }
-    subQty.run(it.quantity, it.product_id);
+
+    const curAvg = Number(p.avg_cost) || 0;
+    let newAvg = curAvg;
+    if (newQty > 0) {
+      const value = p.quantity * curAvg - it.quantity * it.unit_cost;
+      newAvg = Math.max(0, value / newQty);
+    }
+    upd.run(newQty, Math.round(newAvg * 10000) / 10000, it.product_id);
   }
 }
 
@@ -151,14 +180,13 @@ export default function stockRouter() {
           `INSERT INTO stock_entry_items (entry_id, product_id, product_name, barcode, quantity, unit_cost)
            VALUES (?, ?, ?, ?, ?, ?)`
         );
-        const addQty = db.prepare(
-          'UPDATE products SET quantity = ROUND(quantity + ?, 3) WHERE id = ?'
-        );
-
+        // في POST /entries
         for (const l of lines) {
           insItem.run(entryId, l.productId, l.name, l.barcode, l.quantity, l.unitCost);
-          addQty.run(l.quantity, l.productId);
+          stockIn(db, l.productId, l.quantity, l.unitCost);
         }
+
+       
       })();
     } catch (err) {
       console.error(err);
@@ -232,14 +260,12 @@ export default function stockRouter() {
           `INSERT INTO stock_entry_items (entry_id, product_id, product_name, barcode, quantity, unit_cost)
            VALUES (?, ?, ?, ?, ?, ?)`
         );
-        const addQty = db.prepare(
-          'UPDATE products SET quantity = ROUND(quantity + ?, 3) WHERE id = ?'
-        );
-        for (const l of lines) {
-          insItem.run(id, l.productId, l.name, l.barcode, l.quantity, l.unitCost);
-          addQty.run(l.quantity, l.productId);
-        }
-
+       // في PUT /entries/:id
+          for (const l of lines) {
+            insItem.run(id, l.productId, l.name, l.barcode, l.quantity, l.unitCost);
+            stockIn(db, l.productId, l.quantity, l.unitCost);
+          }
+      
         // 3) Update the header (keep ref_number, user_id, user_name, created_at)
         db.prepare(
           'UPDATE stock_entries SET supplier = ?, note = ?, total_cost = ? WHERE id = ?'

@@ -19,6 +19,7 @@ export type Product = {
   id: number;
   name: string;
   price: number;
+  avg_cost: number;
   category: string;
   quantity: number;
   stock: number;
