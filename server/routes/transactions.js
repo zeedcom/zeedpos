@@ -7,15 +7,20 @@ const router = Router();
 function decrementInventory(items, db) {
   for (const item of items || []) {
     const id = parseInt(item.id ?? item._id, 10);
-    const qty = parseInt(item.quantity, 10) || 0;
-    if (!id || !qty) continue;
-    const product = db.prepare('SELECT id, quantity, stock FROM products WHERE id = ?').get(id);
-    if (!product || product.stock === 0) continue;
-    const updated = Math.max(0, (product.quantity || 0) - qty);
+    const qty = parseFloat(item.quantity) || 0; // يقبل الكسور (1.5)
+    if (!id || qty <= 0) continue;
+
+    const product = db
+      .prepare('SELECT id, quantity, stock FROM products WHERE id = ?')
+      .get(id);
+    if (!product || Number(product.stock) === 0) continue;
+
+    const current = Number(product.quantity) || 0;
+    const updated = Math.max(0, Math.round((current - qty) * 1000) / 1000);
+
     db.prepare('UPDATE products SET quantity = ? WHERE id = ?').run(updated, id);
   }
 }
-
 router.get('/all', requirePerm('perm_transactions'), (_req, res) => {
   const rows = getDb().prepare('SELECT * FROM transactions ORDER BY date DESC').all();
   res.json(rows.map(mapTransaction));
